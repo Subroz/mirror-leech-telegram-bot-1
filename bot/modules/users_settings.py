@@ -17,8 +17,8 @@ def getleechinfo(from_user):
     name = from_user.full_name
     buttons = button_build.ButtonMaker()
     thumbpath = f"Thumbnails/{user_id}.jpg"
-    if user_id in user_data and (user_data[user_id].get('as_doc') or not user_data[user_id].get('as_media')) \
-       and AS_DOCUMENT:
+    if user_id in user_data and (user_data[user_id].get('as_doc') or (not user_data[user_id].get('as_media') \
+       and AS_DOCUMENT)):
         ltype = "DOCUMENT"
         buttons.sbutton("Send As Media", f"leechset {user_id} med")
     else:
@@ -109,7 +109,7 @@ def setThumb(update, context):
 def sendUsersSettings(update, context):
     msg = ''
     for u, d in user_data.items():
-        msg += f'<code>{u}</code>: {d}'
+        msg += f'<code>{u}</code>: {d}\n'
     sendMessage(msg, context.bot, update.message)
 
 users_settings_handler = CommandHandler(BotCommands.UsersCommand, sendUsersSettings,
