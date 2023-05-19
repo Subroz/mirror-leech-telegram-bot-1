@@ -10,9 +10,12 @@ from asyncio.subprocess import PIPE
 from functools import partial, wraps
 from concurrent.futures import ThreadPoolExecutor
 
-from bot import download_dict, download_dict_lock, botStartTime, DOWNLOAD_DIR, user_data, config_dict, bot_loop
+from bot import download_dict, download_dict_lock, botStartTime, user_data, config_dict, bot_loop
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.button_build import ButtonMaker
+from bot.helper.ext_utils.telegraph_helper import telegraph
+
+THREADPOOL = ThreadPoolExecutor(max_workers=1000)
 
 MAGNET_REGEX = r'magnet:\?xt=urn:(btih|btmh):[a-zA-Z0-9]*\s*'
 
@@ -53,6 +56,7 @@ class setInterval:
     def cancel(self):
         self.task.cancel()
 
+
 def get_readable_file_size(size_in_bytes):
     if size_in_bytes is None:
         return '0B'
@@ -62,15 +66,18 @@ def get_readable_file_size(size_in_bytes):
         index += 1
     return f'{size_in_bytes:.2f}{SIZE_UNITS[index]}' if index > 0 else f'{size_in_bytes}B'
 
+
 async def getDownloadByGid(gid):
     async with download_dict_lock:
         return next((dl for dl in download_dict.values() if dl.gid() == gid), None)
+
 
 async def getAllDownload(req_status):
     async with download_dict_lock:
         if req_status == 'all':
             return list(download_dict.values())
         return [dl for dl in download_dict.values() if dl.status() == req_status]
+
 
 def bt_selection_buttons(id_):
     gid = id_[:12] if len(id_) > 20 else id_
@@ -81,9 +88,20 @@ def bt_selection_buttons(id_):
         buttons.ubutton("Select Files", f"{BASE_URL}/app/files/{id_}")
         buttons.ibutton("Pincode", f"btsel pin {gid} {pincode}")
     else:
-        buttons.ubutton("Select Files", f"{BASE_URL}/app/files/{id_}?pin_code={pincode}")
+        buttons.ubutton(
+            "Select Files", f"{BASE_URL}/app/files/{id_}?pin_code={pincode}")
     buttons.ibutton("Done Selecting", f"btsel done {gid} {id_}")
     return buttons.build_menu(2)
+
+
+async def get_telegraph_list(telegraph_content):
+    path = [(await telegraph.create_page(title='Mirror-Leech-Bot Drive Search', content=content))["path"] for content in telegraph_content]
+    if len(path) > 1:
+        await telegraph.edit_telegraph(path, telegraph_content)
+    buttons = ButtonMaker()
+    buttons.ubutton("🔎 VIEW", f"https://telegra.ph/{path[0]}")
+    return buttons.build_menu(1)
+
 
 def get_progress_bar_string(pct):
     pct = float(pct.strip('%'))
@@ -93,15 +111,16 @@ def get_progress_bar_string(pct):
     p_str += '□' * (12 - cFull)
     return f"[{p_str}]"
 
+
 def get_readable_message():
     msg = ""
     button = None
     STATUS_LIMIT = config_dict['STATUS_LIMIT']
     tasks = len(download_dict)
     globals()['PAGES'] = (tasks + STATUS_LIMIT - 1) // STATUS_LIMIT
-    if PAGE_NO > PAGES:
-        globals()['STATUS_START'] -= STATUS_LIMIT
-        globals()['PAGE_NO'] -= 1
+    if PAGE_NO > PAGES and PAGES != 0:
+        globals()['STATUS_START'] = STATUS_LIMIT * (PAGES - 1)
+        globals()['PAGE_NO'] = PAGES
     for download in list(download_dict.values())[STATUS_START:STATUS_LIMIT+STATUS_START]:
         if download.message.chat.type.name in ['SUPERGROUP', 'CHANNEL']:
             msg += f"<b><a href='{download.message.link}'>{download.status()}</a>: </b>"
@@ -157,10 +176,11 @@ def get_readable_message():
         buttons.ibutton(">>", "status nex")
         buttons.ibutton("♻️", "status ref")
         button = buttons.build_menu(3)
-    msg += f"<b>CPU:</b> {cpu_percent()}% | <b>FREE:</b> {get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)}"
+    msg += f"<b>CPU:</b> {cpu_percent()}% | <b>FREE:</b> {get_readable_file_size(disk_usage(config_dict['DOWNLOAD_DIR']).free)}"
     msg += f"\n<b>RAM:</b> {virtual_memory().percent}% | <b>UPTIME:</b> {get_readable_time(time() - botStartTime)}"
     msg += f"\n<b>DL:</b> {get_readable_file_size(dl_speed)}/s | <b>UL:</b> {get_readable_file_size(up_speed)}/s"
     return msg, button
+
 
 async def turn_page(data):
     STATUS_LIMIT = config_dict['STATUS_LIMIT']
@@ -181,6 +201,7 @@ async def turn_page(data):
                 STATUS_START -= STATUS_LIMIT
                 PAGE_NO -= 1
 
+
 def get_readable_time(seconds):
     periods = [('d', 86400), ('h', 3600), ('m', 60), ('s', 1)]
     result = ''
@@ -190,30 +211,41 @@ def get_readable_time(seconds):
             result += f'{int(period_value)}{period_name}'
     return result
 
+
 def is_magnet(url):
     return bool(re_match(MAGNET_REGEX, url))
+
 
 def is_url(url):
     return bool(re_match(URL_REGEX, url))
 
+
 def is_gdrive_link(url):
     return "drive.google.com" in url
+
+def is_telegram_link(url):
+    return url.startswith(('https://t.me/', 'tg://openmessage?user_id='))
 
 def is_share_link(url):
     return bool(re_match(r'https?:\/\/.+\.gdtot\.\S+|https?:\/\/(filepress|filebee|appdrive|gdflix)\.\S+', url))
 
+
 def is_mega_link(url):
     return "mega.nz" in url or "mega.co.nz" in url
+
 
 def is_rclone_path(path):
     return bool(re_match(r'^(mrcc:)?(?!magnet:)(?![- ])[a-zA-Z0-9_\. -]+(?<! ):(?!.*\/\/).*$|^rcl$', path))
 
+
 def get_mega_link_type(url):
     return "folder" if "folder" in url or "/#F!" in url else "file"
 
+
 def get_content_type(link):
     try:
-        res = rhead(link, allow_redirects=True, timeout=5, headers={'user-agent': 'Wget/1.12'})
+        res = rhead(link, allow_redirects=True, timeout=5,
+                    headers={'user-agent': 'Wget/1.12'})
         content_type = res.headers.get('content-type')
     except:
         try:
@@ -223,9 +255,11 @@ def get_content_type(link):
             content_type = None
     return content_type
 
+
 def update_user_ldata(id_, key, value):
     user_data.setdefault(id_, {})
     user_data[id_][key] = value
+
 
 async def cmd_exec(cmd, shell=False):
     if shell:
@@ -237,21 +271,24 @@ async def cmd_exec(cmd, shell=False):
     stderr = stderr.decode().strip()
     return stdout, stderr, proc.returncode
 
+
 def new_task(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         return bot_loop.create_task(func(*args, **kwargs))
     return wrapper
 
+
 async def sync_to_async(func, *args, wait=True, **kwargs):
     pfunc = partial(func, *args, **kwargs)
-    with ThreadPoolExecutor() as pool:
-        future = bot_loop.run_in_executor(pool, pfunc)
-        return await future if wait else future
+    future = bot_loop.run_in_executor(THREADPOOL, pfunc)
+    return await future if wait else future
+
 
 def async_to_sync(func, *args, wait=True, **kwargs):
     future = run_coroutine_threadsafe(func(*args, **kwargs), bot_loop)
     return future.result() if wait else future
+
 
 def new_thread(func):
     @wraps(func)
