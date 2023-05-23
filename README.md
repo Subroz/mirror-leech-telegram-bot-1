@@ -124,6 +124,7 @@ In each single file there is a major change from base code, it's almost totaly d
 - View Link button. Extra button to open index link in broswer instead of direct download for file
 - Queueing System for all tasks
 - Ability to zip/unzip multi links in same directory. Mostly helpful in unziping tg file parts
+- Bulk download from telegram txt file or text message contains links seperated by new line
 - Almost all repository functions have been improved and many other details can't mention all of them
 - Many bugs have been fixed
 
@@ -688,8 +689,12 @@ Where host is the name of extractor (eg. instagram, Twitch). Multiple accounts o
 
 <p> If you feel like showing your appreciation for this project, then how about buying me a coffee.</p>
 
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/anasty17)
+[!["Buy Me A Coffee"](https://storage.ko-fi.com/cdn/kofi2.png)](https://ko-fi.com/anasty17)
 
+Binance ID:
+```
+52187862
+```
 USDT Address:
 
 ```
