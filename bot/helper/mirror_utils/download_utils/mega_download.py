@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-from random import SystemRandom
-from string import ascii_letters, digits
+from secrets import token_urlsafe
 from aiofiles.os import makedirs
 from asyncio import Event
 from mega import (MegaApi, MegaListener, MegaRequest, MegaTransfer, MegaError)
@@ -156,7 +155,7 @@ async def add_mega_download(mega_link, path, listener, name):
             await executor.do(folder_api.logout, ())
         return
 
-    gid = ''.join(SystemRandom().choices(ascii_letters + digits, k=8))
+    gid = token_urlsafe(8)
     size = api.getSize(node)
 
     added_to_queue, event = await is_queued(listener.uid)
@@ -180,7 +179,8 @@ async def add_mega_download(mega_link, path, listener, name):
         from_queue = False
 
     async with download_dict_lock:
-        download_dict[listener.uid] = MegaDownloadStatus(name, size, gid, mega_listener, listener.message)
+        download_dict[listener.uid] = MegaDownloadStatus(
+            name, size, gid, mega_listener, listener.message)
     async with queue_dict_lock:
         non_queued_dl.add(listener.uid)
 

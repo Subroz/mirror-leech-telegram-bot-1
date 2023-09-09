@@ -12,7 +12,7 @@ from re import split as re_split
 from io import BytesIO
 
 from bot import scheduler, rss_dict, LOGGER, DATABASE_URL, config_dict, bot
-from bot.helper.telegram_helper.message_utils import sendMessage, editMessage, sendRss, sendFile
+from bot.helper.telegram_helper.message_utils import sendMessage, editMessage, sendRss, sendFile, deleteMessage
 from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.ext_utils.db_handler import DbManger
@@ -70,7 +70,7 @@ async def rssSub(client, message, pre_event):
         tag = message.from_user.mention
     msg = ''
     items = message.text.split('\n')
-    for item in items:
+    for index, item in enumerate(items, start=1):
         args = item.split()
         if len(args) < 2:
             await sendMessage(message, f'{item}. Wrong Input format. Read help message before adding new subcription!')
@@ -80,21 +80,21 @@ async def rssSub(client, message, pre_event):
             await sendMessage(message, f"This title {title} already subscribed! Choose another title!")
             continue
         feed_link = args[1].strip()
+        if feed_link.startswith(('-inf', '-exf', '-c')):
+            await sendMessage(message, f'Wrong input in line {index}! Re-add only the mentioned line correctly! Read the example!')
+            continue
         inf_lists = []
         exf_lists = []
         if len(args) > 2:
-            arg = item.split(' c: ', 1)
-            cmd = re_split(' inf: | exf: | opt: ', arg[1])[
-                0].strip() if len(arg) > 1 else None
-            arg = item.split(' inf: ', 1)
-            inf = re_split(' c: | exf: | opt: ', arg[1])[
-                0].strip() if len(arg) > 1 else None
-            arg = item.split(' exf: ', 1)
-            exf = re_split(' c: | inf: | opt: ', arg[1])[
-                0].strip() if len(arg) > 1 else None
-            arg = item.split(' opt: ', 1)
-            opt = re_split(' c: | inf: | exf: ', arg[1])[
-                0].strip() if len(arg) > 1 else None
+            arg = item.split(' -c ', 1)
+            cmd = re_split(' -inf | -exf ',
+                           arg[1])[0].strip() if len(arg) > 1 else None
+            arg = item.split(' -inf ', 1)
+            inf = re_split(
+                ' -c | -exf ', arg[1])[0].strip() if len(arg) > 1 else None
+            arg = item.split(' -exf ', 1)
+            exf = re_split(
+                ' -c | -inf ', arg[1])[0].strip() if len(arg) > 1 else None
             if inf is not None:
                 filters_list = inf.split('|')
                 for x in filters_list:
@@ -109,7 +109,6 @@ async def rssSub(client, message, pre_event):
             inf = None
             exf = None
             cmd = None
-            opt = None
         try:
             async with ClientSession(trust_env=True) as session:
                 async with session.get(feed_link) as res:
@@ -127,16 +126,15 @@ async def rssSub(client, message, pre_event):
             msg += f"\nLink: <code>{last_link}</code>"
             msg += f"\n<b>Command: </b><code>{cmd}</code>"
             msg += f"\n<b>Filters:-</b>\ninf: <code>{inf}</code>\nexf: <code>{exf}<code/>"
-            msg += f"\nOptions: {opt}\n\n"
             async with rss_dict_lock:
                 if rss_dict.get(user_id, False):
                     rss_dict[user_id][title] = {'link': feed_link, 'last_feed': last_link, 'last_title': last_title,
-                                                'inf': inf_lists, 'exf': exf_lists, 'paused': False, 'command': cmd, 'options': opt, 'tag': tag}
+                                                'inf': inf_lists, 'exf': exf_lists, 'paused': False, 'command': cmd, 'tag': tag}
                 else:
                     rss_dict[user_id] = {title: {'link': feed_link, 'last_feed': last_link, 'last_title': last_title,
-                                                 'inf': inf_lists, 'exf': exf_lists, 'paused': False, 'command': cmd, 'options': opt, 'tag': tag}}
+                                                 'inf': inf_lists, 'exf': exf_lists, 'paused': False, 'command': cmd, 'tag': tag}}
             LOGGER.info(
-                f"Rss Feed Added: id: {user_id} - title: {title} - link: {feed_link} - c: {cmd} - inf: {inf} - exf: {exf} - opt: {opt}")
+                f"Rss Feed Added: id: {user_id} - title: {title} - link: {feed_link} - c: {cmd} - inf: {inf} - exf: {exf}")
         except (IndexError, AttributeError) as e:
             emsg = f"The link: {feed_link} doesn't seem to be a RSS feed or it's region-blocked!"
             await sendMessage(message, emsg + '\nError: ' + str(e))
@@ -147,6 +145,12 @@ async def rssSub(client, message, pre_event):
     if msg:
         await sendMessage(message, msg)
     await updateRssMenu(pre_event)
+    is_sudo = await CustomFilters.sudo(client, message)
+    if scheduler.state == 2:
+        scheduler.resume()
+    elif is_sudo and not scheduler.running:
+        addJob(config_dict['RSS_DELAY'])
+        scheduler.start()
 
 
 async def getUserId(title):
@@ -219,7 +223,6 @@ async def rssList(query, start, all_users=False):
                     list_feed += f"<b>Inf:</b> <code>{data['inf']}</code>\n"
                     list_feed += f"<b>Exf:</b> <code>{data['exf']}</code>\n"
                     list_feed += f"<b>Paused:</b> <code>{data['paused']}</code>\n"
-                    list_feed += f"<b>Options:</b> <code>{data['options']}</code>\n"
                     list_feed += f"<b>User:</b> {data['tag'].lstrip('@')}"
                     index += 1
                     if index == 5:
@@ -234,7 +237,6 @@ async def rssList(query, start, all_users=False):
                 list_feed += f"<b>Inf:</b> <code>{data['inf']}</code>\n"
                 list_feed += f"<b>Exf:</b> <code>{data['exf']}</code>\n"
                 list_feed += f"<b>Paused:</b> <code>{data['paused']}</code>\n"
-                list_feed += f"<b>Options:</b> <code>{data['options']}</code>"
     buttons.ibutton("Back", f"rss back {user_id}")
     buttons.ibutton("Close", f"rss close {user_id}")
     if keysCount > 5:
@@ -279,7 +281,7 @@ async def rssGet(client, message, pre_event):
                     with BytesIO(item_info_ecd) as out_file:
                         out_file.name = f"rssGet {title} items_no. {count}.txt"
                         await sendFile(message, out_file)
-                    await msg.delete()
+                    await deleteMessage(msg)
                 else:
                     await editMessage(msg, item_info)
             except IndexError as e:
@@ -309,23 +311,16 @@ async def rssEdit(client, message, pre_event):
             continue
         inf_lists = []
         exf_lists = []
-        arg = item.split(' c: ', 1)
-        cmd = re_split(' inf: | exf: | opt: ', arg[1])[
-            0].strip() if len(arg) > 1 else None
-        arg = item.split(' inf: ', 1)
-        inf = re_split(' c: | exf: | opt: ', arg[1])[
-            0].strip() if len(arg) > 1 else None
-        arg = item.split(' exf: ', 1)
-        exf = re_split(' c: | inf: | opt: ', arg[1])[
-            0].strip() if len(arg) > 1 else None
-        arg = item.split(' opt: ', 1)
-        opt = re_split(' c: | inf: | exf: ', arg[1])[
-            0].strip() if len(arg) > 1 else None
+        arg = item.split(' -c ', 1)
+        cmd = re_split(' -inf | -exf ', arg[1]
+                       )[0].strip() if len(arg) > 1 else None
+        arg = item.split(' -inf ', 1)
+        inf = re_split(' -c | -exf ', arg[1]
+                       )[0].strip() if len(arg) > 1 else None
+        arg = item.split(' -exf ', 1)
+        exf = re_split(' -c | -inf ', arg[1]
+                       )[0].strip() if len(arg) > 1 else None
         async with rss_dict_lock:
-            if opt is not None:
-                if opt.lower() == 'none':
-                    opt = None
-                rss_dict[user_id][title]['options'] = opt
             if cmd is not None:
                 if cmd.lower() == 'none':
                     cmd = None
@@ -389,8 +384,8 @@ async def rssListener(client, query):
     elif data[1] == 'close':
         await query.answer()
         handler_dict[user_id] = False
-        await message.reply_to_message.delete()
-        await message.delete()
+        await deleteMessage(message.reply_to_message)
+        await deleteMessage(message)
     elif data[1] == 'back':
         await query.answer()
         handler_dict[user_id] = False
@@ -423,7 +418,7 @@ async def rssListener(client, query):
             buttons.ibutton("Back", f"rss back {user_id}")
             buttons.ibutton("Close", f"rss close {user_id}")
             button = buttons.build_menu(2)
-            await editMessage(message, 'Send one title with vlaue separated by space get last X items.\nTitle Value\nTimeout: 60 sec.', button)
+            await editMessage(message, 'Send one title with value separated by space get last X items.\nTitle Value\nTimeout: 60 sec.', button)
             pfunc = partial(rssGet, pre_event=query)
             await event_handler(client, query, pfunc)
     elif data[1] in ['unsubscribe', 'pause', 'resume']:
@@ -458,10 +453,11 @@ async def rssListener(client, query):
             button = buttons.build_menu(2)
             msg = '''Send one or more rss titles with new filters or command separated by new line.
 Examples:
-Title1 c: mirror exf: none inf: 1080 or 720 opt: up: remote:path/subdir
-Title2 c: none inf: none opt: none
+Title1 -c mirror -up remote:path/subdir -exf none -inf 1080 or 720 opt: up: remote:path/subdir
+Title2 -c none -inf none -opt none
+Title3 -c mirror -rcf xxx -up xxx -z pswd
 Note: Only what you provide will be edited, the rest will be the same like example 2: exf will stay same as it is.
-Timeout: 60 sec.
+Timeout: 60 sec. Argument -c for command and options
             '''
             await editMessage(message, msg, button)
             pfunc = partial(rssEdit, pre_event=query)
@@ -564,8 +560,8 @@ Timeout: 60 sec.
 
 
 async def rssMonitor():
-    if not config_dict['RSS_CHAT_ID']:
-        LOGGER.warning('RSS_CHAT_ID not added! Shutting down rss scheduler...')
+    if not config_dict['RSS_CHAT']:
+        LOGGER.warning('RSS_CHAT not added! Shutting down rss scheduler...')
         scheduler.shutdown(wait=False)
         return
     if len(rss_dict) == 0:
@@ -574,7 +570,6 @@ async def rssMonitor():
     all_paused = True
     for user, items in list(rss_dict.items()):
         for title, data in list(items.items()):
-            await sleep(0)
             try:
                 if data['paused']:
                     continue
@@ -586,11 +581,11 @@ async def rssMonitor():
                     last_link = rss_d.entries[0]['links'][1]['href']
                 except IndexError:
                     last_link = rss_d.entries[0]['link']
+                finally:
+                    all_paused = False
                 last_title = rss_d.entries[0]['title']
                 if data['last_feed'] == last_link or data['last_title'] == last_title:
-                    all_paused = False
                     continue
-                all_paused = False
                 feed_count = 0
                 while True:
                     try:
@@ -623,8 +618,11 @@ async def rssMonitor():
                     if not parse:
                         continue
                     if command := data['command']:
-                        options = opt if (opt := data['options']) else ''
-                        feed_msg = f"/{command.replace('/', '')} {url} {options}"
+                        cmd = command.split(maxsplit=1)
+                        cmd.insert(1, url)
+                        feed_msg = " ".join(cmd)
+                        if not feed_msg.startswith('/'):
+                            feed_msg = f"/{feed_msg}"
                     else:
                         feed_msg = f"<b>Name: </b><code>{item_title.replace('>', '').replace('<', '')}</code>\n\n"
                         feed_msg += f"<b>Link: </b><code>{url}</code>"
@@ -644,7 +642,7 @@ async def rssMonitor():
                 break
             except Exception as e:
                 LOGGER.error(
-                    f"{e} Feed Name: {title} - Feed Link: {data['link']}")
+                    f"{e} - Feed Name: {title} - Feed Link: {data['link']}")
                 continue
     if all_paused:
         scheduler.pause()

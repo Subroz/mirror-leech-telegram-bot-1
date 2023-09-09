@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from os import path as ospath, listdir
-from random import SystemRandom
-from string import ascii_letters, digits
+from secrets import token_urlsafe
 from logging import getLogger
 from yt_dlp import YoutubeDL, DownloadError
 from re import search as re_search
@@ -65,7 +64,11 @@ class YoutubeDLHelper:
                      'allow_playlist_files': True,
                      'overwrites': True,
                      'writethumbnail': True,
-                     'trim_file_name': 230}
+                     'trim_file_name': 220,
+                     'retry_sleep_functions': {'http': lambda n: 3,
+                                               'fragment': lambda n: 3,
+                                               'file_access': lambda n: 3,
+                                               'extractor': lambda n: 3}}
 
     @property
     def download_speed(self):
@@ -107,7 +110,7 @@ class YoutubeDLHelper:
                 elif d.get('total_bytes_estimate'):
                     self.__size = d['total_bytes_estimate']
                 self.__downloaded_bytes = d['downloaded_bytes']
-                self.__eta = d.get('eta', '-')
+                self.__eta = d.get('eta', '-') or '-'
             try:
                 self.__progress = (self.__downloaded_bytes / self.__size) * 100
             except:
@@ -146,7 +149,8 @@ class YoutubeDLHelper:
                         self.__size += entry['filesize']
                     if not name:
                         outtmpl_ = '%(series,playlist_title,channel)s%(season_number& |)s%(season_number&S|)s%(season_number|)02d.%(ext)s'
-                        name, ext = ospath.splitext(ydl.prepare_filename(entry, outtmpl=outtmpl_))
+                        name, ext = ospath.splitext(
+                            ydl.prepare_filename(entry, outtmpl=outtmpl_))
                         self.name = name
                         if not self.__ext:
                             self.__ext = ext
@@ -182,8 +186,7 @@ class YoutubeDLHelper:
             self.opts['ignoreerrors'] = True
             self.is_playlist = True
 
-        self.__gid = ''.join(SystemRandom().choices(
-            ascii_letters + digits, k=10))
+        self.__gid = token_urlsafe(10)
 
         await self.__onDownloadStart()
 
@@ -216,24 +219,27 @@ class YoutubeDLHelper:
         base_name, ext = ospath.splitext(self.name)
         trim_name = self.name if self.is_playlist else base_name
         if len(trim_name.encode()) > 200:
-            self.name = self.name[:200] if self.is_playlist else f'{base_name[:200]}{ext}'
+            self.name = self.name[:
+                                  200] if self.is_playlist else f'{base_name[:200]}{ext}'
             base_name = ospath.splitext(self.name)[0]
 
         if self.is_playlist:
             self.opts['outtmpl'] = {'default': f"{path}/{self.name}/%(title,fulltitle,alt_title)s%(season_number& |)s%(season_number&S|)s%(season_number|)02d%(episode_number&E|)s%(episode_number|)02d%(height& |)s%(height|)s%(height&p|)s%(fps|)s%(fps&fps|)s%(tbr& |)s%(tbr|)d.%(ext)s",
                                     'thumbnail': f"{path}/yt-dlp-thumb/%(title,fulltitle,alt_title)s%(season_number& |)s%(season_number&S|)s%(season_number|)02d%(episode_number&E|)s%(episode_number|)02d%(height& |)s%(height|)s%(height&p|)s%(fps|)s%(fps&fps|)s%(tbr& |)s%(tbr|)d.%(ext)s"}
-        elif not options:
-            self.opts['outtmpl'] = {'default': f"{path}/{self.name}",
+        elif any(key in options for key in ['writedescription', 'writeinfojson', 'writeannotations', 'writedesktoplink', 'writewebloclink', 'writeurllink', 'writesubtitles', 'writeautomaticsub']):
+            self.opts['outtmpl'] = {'default': f"{path}/{base_name}/{self.name}",
                                     'thumbnail': f"{path}/yt-dlp-thumb/{base_name}.%(ext)s"}
         else:
-            self.opts['outtmpl'] = {'default': f"{path}/{base_name}/{self.name}",
+            self.opts['outtmpl'] = {'default': f"{path}/{self.name}",
                                     'thumbnail': f"{path}/yt-dlp-thumb/{base_name}.%(ext)s"}
             self.name = base_name
 
         if self.__listener.isLeech:
-            self.opts['postprocessors'].append({'format': 'jpg', 'key': 'FFmpegThumbnailsConvertor', 'when': 'before_dl'})
-        if self.__ext in ['.mp3', '.mkv', '.mka', '.ogg', '.opus', '.flac', '.m4a', '.mp4', '.mov']:
-            self.opts['postprocessors'].append({'already_have_thumbnail': self.__listener.isLeech, 'key': 'EmbedThumbnail'})
+            self.opts['postprocessors'].append(
+                {'format': 'jpg', 'key': 'FFmpegThumbnailsConvertor', 'when': 'before_dl'})
+        if self.__ext in ['.mp3', '.mkv', '.mka', '.ogg', '.opus', '.flac', '.m4a', '.mp4', '.mov', 'm4v']:
+            self.opts['postprocessors'].append(
+                {'already_have_thumbnail': self.__listener.isLeech, 'key': 'EmbedThumbnail'})
         elif not self.__listener.isLeech:
             self.opts['writethumbnail'] = False
 
@@ -274,9 +280,9 @@ class YoutubeDLHelper:
             key, value = map(str.strip, opt.split(':', 1))
             if value.startswith('^'):
                 if '.' in value or value == '^inf':
-                    value = float(value.split('^')[1])
+                    value = float(value.split('^', 1)[1])
                 else:
-                    value = int(value.split('^')[1])
+                    value = int(value.split('^', 1)[1])
             elif value.lower() == 'true':
                 value = True
             elif value.lower() == 'false':

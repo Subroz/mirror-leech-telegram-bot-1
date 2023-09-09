@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 from asyncio import gather
 from json import loads
-from random import SystemRandom
-from string import ascii_letters, digits
+from secrets import token_urlsafe
 
 from bot import download_dict, download_dict_lock, queue_dict_lock, non_queued_dl, LOGGER
 from bot.helper.ext_utils.bot_utils import cmd_exec
@@ -24,11 +23,16 @@ async def add_rclone_download(rc_path, config_path, path, name, listener):
     res1, res2 = await gather(cmd_exec(cmd1), cmd_exec(cmd2))
     if res1[2] != res2[2] != 0:
         if res1[2] != -9:
-            msg = f'Error: While getting rclone stat/size. Path: {remote}:{rc_path}. Stderr: {res1[1][:4000]}'
+            err = res1[1] or res2[1]
+            msg = f'Error: While getting rclone stat/size. Path: {remote}:{rc_path}. Stderr: {err[:4000]}'
             await sendMessage(listener.message, msg)
         return
-    rstat = loads(res1[0])
-    rsize = loads(res2[0])
+    try:
+        rstat = loads(res1[0])
+        rsize = loads(res2[0])
+    except Exception as err:
+        await sendMessage(listener.message, f'RcloneDownload JsonLoad: {err}')
+        return
     if rstat['IsDir']:
         if not name:
             name = rc_path.rsplit('/', 1)[-1] if rc_path else remote
@@ -36,7 +40,7 @@ async def add_rclone_download(rc_path, config_path, path, name, listener):
     else:
         name = rc_path.rsplit('/', 1)[-1]
     size = rsize['bytes']
-    gid = ''.join(SystemRandom().choices(ascii_letters + digits, k=12))
+    gid = token_urlsafe(12)
 
     msg, button = await stop_duplicate_check(name, listener)
     if msg:

@@ -3,12 +3,11 @@ from re import match as re_match
 from time import time
 from html import escape
 from psutil import virtual_memory, cpu_percent, disk_usage
-from requests import head as rhead
-from urllib.request import urlopen
 from asyncio import create_subprocess_exec, create_subprocess_shell, run_coroutine_threadsafe, sleep
 from asyncio.subprocess import PIPE
 from functools import partial, wraps
 from concurrent.futures import ThreadPoolExecutor
+from aiohttp import ClientSession
 
 from bot import download_dict, download_dict_lock, botStartTime, user_data, config_dict, bot_loop
 from bot.helper.telegram_helper.bot_commands import BotCommands
@@ -152,29 +151,17 @@ def get_readable_message():
     for download in download_dict.values():
         tstatus = download.status()
         if tstatus == MirrorStatus.STATUS_DOWNLOADING:
-            spd = download.speed()
-            if 'K' in spd:
-                dl_speed += float(spd.split('K')[0]) * 1024
-            elif 'M' in spd:
-                dl_speed += float(spd.split('M')[0]) * 1048576
+            dl_speed += text_size_to_bytes(download.speed())
         elif tstatus == MirrorStatus.STATUS_UPLOADING:
-            spd = download.speed()
-            if 'K' in spd:
-                up_speed += float(spd.split('K')[0]) * 1024
-            elif 'M' in spd:
-                up_speed += float(spd.split('M')[0]) * 1048576
+            up_speed += text_size_to_bytes(download.speed())
         elif tstatus == MirrorStatus.STATUS_SEEDING:
-            spd = download.upload_speed()
-            if 'K' in spd:
-                up_speed += float(spd.split('K')[0]) * 1024
-            elif 'M' in spd:
-                up_speed += float(spd.split('M')[0]) * 1048576
+            up_speed +=text_size_to_bytes(download.upload_speed())
     if tasks > STATUS_LIMIT:
         msg += f"<b>Page:</b> {PAGE_NO}/{PAGES} | <b>Tasks:</b> {tasks}\n"
         buttons = ButtonMaker()
         buttons.ibutton("<<", "status pre")
-        buttons.ibutton(">>", "status nex")
         buttons.ibutton("♻️", "status ref")
+        buttons.ibutton(">>", "status nex")
         button = buttons.build_menu(3)
     msg += f"<b>CPU:</b> {cpu_percent()}% | <b>FREE:</b> {get_readable_file_size(disk_usage(config_dict['DOWNLOAD_DIR']).free)}"
     msg += f"\n<b>RAM:</b> {virtual_memory().percent}% | <b>UPTIME:</b> {get_readable_time(time() - botStartTime)}"
@@ -223,8 +210,10 @@ def is_url(url):
 def is_gdrive_link(url):
     return "drive.google.com" in url
 
+
 def is_telegram_link(url):
     return url.startswith(('https://t.me/', 'tg://openmessage?user_id='))
+
 
 def is_share_link(url):
     return bool(re_match(r'https?:\/\/.+\.gdtot\.\S+|https?:\/\/(filepress|filebee|appdrive|gdflix)\.\S+', url))
@@ -235,25 +224,64 @@ def is_mega_link(url):
 
 
 def is_rclone_path(path):
-    return bool(re_match(r'^(mrcc:)?(?!magnet:)(?![- ])[a-zA-Z0-9_\. -]+(?<! ):(?!.*\/\/).*$|^rcl$', path))
+    return bool(re_match(r'^(mrcc:)?(?!magnet:)(?!mtp:)(?![- ])[a-zA-Z0-9_\. -]+(?<! ):(?!.*\/\/).*$|^rcl$', path))
+
+
+def is_gdrive_id(id_):
+    return bool(re_match(r'^(mtp:)?(?:[a-zA-Z0-9-_]{33}|[a-zA-Z0-9_-]{19})$|^gdl$|^root$', id_))
 
 
 def get_mega_link_type(url):
     return "folder" if "folder" in url or "/#F!" in url else "file"
 
 
-def get_content_type(link):
+def arg_parser(items, arg_base):
+    if not items:
+        return arg_base
+    bool_arg_set = {'-b', '-e', '-z', '-s', '-j', '-d'}
+    t = len(items)
+    i = 0
+    arg_start = -1
+
+    while i + 1 <= t:
+        part = items[i].strip()
+        if part in arg_base:
+            if arg_start == -1:
+                arg_start = i
+            if i + 1 == t and part in bool_arg_set or part in ['-s', '-j']:
+                arg_base[part] = True
+            else:
+                sub_list = []
+                for j in range(i + 1, t):
+                    item = items[j].strip()
+                    if item in arg_base:
+                        if part in bool_arg_set and not sub_list:
+                            arg_base[part] = True
+                        break
+                    sub_list.append(item.strip())
+                    i += 1
+                if sub_list:
+                    arg_base[part] = " ".join(sub_list)
+        i += 1
+
+    link = []
+    if items[0].strip() not in arg_base:
+        if arg_start == -1:
+            link.extend(item.strip() for item in items)
+        else:
+            link.extend(items[r].strip() for r in range(arg_start))
+        if link:
+            arg_base['link'] = " ".join(link)
+    return arg_base
+
+
+async def get_content_type(url):
     try:
-        res = rhead(link, allow_redirects=True, timeout=5,
-                    headers={'user-agent': 'Wget/1.12'})
-        content_type = res.headers.get('content-type')
+        async with ClientSession(trust_env=True) as session:
+            async with session.get(url, verify_ssl=False) as response:
+                return response.headers.get('Content-Type')
     except:
-        try:
-            res = urlopen(link, timeout=5)
-            content_type = res.info().get_content_type()
-        except:
-            content_type = None
-    return content_type
+        return None
 
 
 def update_user_ldata(id_, key, value):
@@ -289,6 +317,18 @@ def async_to_sync(func, *args, wait=True, **kwargs):
     future = run_coroutine_threadsafe(func(*args, **kwargs), bot_loop)
     return future.result() if wait else future
 
+def text_size_to_bytes(size_text):
+    size = 0
+    size_text = size_text.lower()
+    if 'k' in size_text:
+        size += float(size_text.split('k')[0]) * 1024
+    elif 'm' in size_text:
+        size += float(size_text.split('m')[0]) * 1048576
+    elif 'g' in size_text:
+        size += float(size_text.split('g')[0]) *1073741824 
+    elif 't' in size_text:
+        size += float(size_text.split('t')[0]) *1099511627776 
+    return size
 
 def new_thread(func):
     @wraps(func)
