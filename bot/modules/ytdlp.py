@@ -322,8 +322,6 @@ async def _ytdl(client, message, isLeech=False, sameDir=None, bulk=[]):
 
     path = f'{DOWNLOAD_DIR}{message.id}{folder_name}'
 
-    opt = opt or config_dict['YT_DLP_OPTIONS']
-
     if len(text) > 1 and text[1].startswith('Tag: '):
         tag, id_ = text[1].split('Tag: ')[1].split()
         message.from_user = await client.get_users(id_)
@@ -333,6 +331,10 @@ async def _ytdl(client, message, isLeech=False, sameDir=None, bulk=[]):
             pass
 
     user_id = message.from_user.id
+
+    user_dict = user_data.get(user_id, {})
+
+    opt = opt or user_dict.get('yt_opt') or config_dict['YT_DLP_OPTIONS']
 
     if username := message.from_user.username:
         tag = f'@{username}'
@@ -347,7 +349,6 @@ async def _ytdl(client, message, isLeech=False, sameDir=None, bulk=[]):
         return
 
     if not isLeech:
-        user_dict = user_data.get(user_id, {})
         default_upload = user_dict.get('default_upload', '')
         if not up and (default_upload == 'rc' or not default_upload and config_dict['DEFAULT_UPLOAD'] == 'rc') or up == 'rc':
             up = user_dict.get('rclone_path') or config_dict['RCLONE_PATH']
@@ -395,6 +396,12 @@ async def _ytdl(client, message, isLeech=False, sameDir=None, bulk=[]):
         yt_opt = opt.split('|')
         for ytopt in yt_opt:
             key, value = map(str.strip, ytopt.split(':', 1))
+            if key == 'format':
+                if select:
+                    qual = ''
+                elif value.startswith('ba/b-'):
+                    qual = value
+                    continue
             if value.startswith('^'):
                 if '.' in value or value == '^inf':
                     value = float(value.split('^')[1])
@@ -420,12 +427,8 @@ async def _ytdl(client, message, isLeech=False, sameDir=None, bulk=[]):
 
     __run_multi()
 
-    if not select:
-        user_dict = user_data.get(user_id, {})
-        if 'format' in options:
-            qual = options['format']
-        elif user_dict.get('yt_opt'):
-            qual = user_dict['yt_opt']
+    if not select and (not qual and 'format' in options):
+        qual = options['format']
 
     if not qual:
         qual = await YtSelection(client, message).get_quality(result)
