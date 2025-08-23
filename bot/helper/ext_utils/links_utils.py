@@ -2,7 +2,7 @@ from re import match as re_match
 
 
 def is_magnet(url: str):
-    return bool(re_match(r"magnet:\?xt=urn:(btih|btmh):[a-zA-Z0-9]*\s*", url))
+    return bool(re_match(r"^magnet:\?.*xt=urn:(btih|btmh):([a-zA-Z0-9]{32,40}|[a-z2-7]{32}).*", url))
 
 
 def is_url(url: str):
@@ -15,7 +15,7 @@ def is_url(url: str):
 
 
 def is_gdrive_link(url: str):
-    return "drive.google.com" in url
+    return "drive.google.com" in url or "drive.usercontent.google.com" in url
 
 
 def is_telegram_link(url: str):
@@ -31,10 +31,6 @@ def is_share_link(url: str):
     )
 
 
-def is_mega_link(url: str):
-    return "mega.nz" in url or "mega.co.nz" in url
-
-
 def is_rclone_path(path: str):
     return bool(
         re_match(
@@ -47,11 +43,7 @@ def is_rclone_path(path: str):
 def is_gdrive_id(id_: str):
     return bool(
         re_match(
-            r"^(tp:|sa:|mtp:)?(?:[a-zA-Z0-9-_]{33}|[a-zA-Z0-9_-]{19})$|^gdl$|^root$",
+            r"^(tp:|sa:|mtp:)?(?:[a-zA-Z0-9-_]{33}|[a-zA-Z0-9_-]{19})$|^gdl$|^(tp:|mtp:)?root$",
             id_,
         )
     )
-
-
-def get_mega_link_type(url: str):
-    return "folder" if "folder" in url or "/#F!" in url else "file"

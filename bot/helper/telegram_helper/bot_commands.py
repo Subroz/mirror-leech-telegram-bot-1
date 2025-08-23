@@ -1,41 +1,44 @@
-from bot import CMD_SUFFIX
+from ...core.config_manager import Config
 
+i = Config.CMD_SUFFIX
 
-class _BotCommands:
-    def __init__(self):
-        self.StartCommand = f"start{CMD_SUFFIX}"
-        self.MirrorCommand = [f"mirror{CMD_SUFFIX}", f"m{CMD_SUFFIX}"]
-        self.QbMirrorCommand = [f"qbmirror{CMD_SUFFIX}", f"qm{CMD_SUFFIX}"]
-        self.YtdlCommand = [f"ytdl{CMD_SUFFIX}", f"y{CMD_SUFFIX}"]
-        self.LeechCommand = [f"leech{CMD_SUFFIX}", f"l{CMD_SUFFIX}"]
-        self.QbLeechCommand = [f"qbleech{CMD_SUFFIX}", f"ql{CMD_SUFFIX}"]
-        self.YtdlLeechCommand = [f"ytdlleech{CMD_SUFFIX}", f"yl{CMD_SUFFIX}"]
-        self.CloneCommand = f"clone{CMD_SUFFIX}"
-        self.CountCommand = f"count{CMD_SUFFIX}"
-        self.DeleteCommand = f"del{CMD_SUFFIX}"
-        self.CancelTaskCommand = f"cancel{CMD_SUFFIX}"
-        self.CancelAllCommand = f"cancelall{CMD_SUFFIX}"
-        self.ListCommand = f"list{CMD_SUFFIX}"
-        self.SearchCommand = f"search{CMD_SUFFIX}"
-        self.StatusCommand = f"status{CMD_SUFFIX}"
-        self.UsersCommand = f"users{CMD_SUFFIX}"
-        self.AuthorizeCommand = f"authorize{CMD_SUFFIX}"
-        self.UnAuthorizeCommand = f"unauthorize{CMD_SUFFIX}"
-        self.AddSudoCommand = f"addsudo{CMD_SUFFIX}"
-        self.RmSudoCommand = f"rmsudo{CMD_SUFFIX}"
-        self.PingCommand = f"ping{CMD_SUFFIX}"
-        self.RestartCommand = f"restart{CMD_SUFFIX}"
-        self.StatsCommand = f"stats{CMD_SUFFIX}"
-        self.HelpCommand = f"help{CMD_SUFFIX}"
-        self.LogCommand = f"log{CMD_SUFFIX}"
-        self.ShellCommand = f"shell{CMD_SUFFIX}"
-        self.EvalCommand = f"eval{CMD_SUFFIX}"
-        self.ExecCommand = f"exec{CMD_SUFFIX}"
-        self.ClearLocalsCommand = f"clearlocals{CMD_SUFFIX}"
-        self.BotSetCommand = f"bsetting{CMD_SUFFIX}"
-        self.UserSetCommand = f"usetting{CMD_SUFFIX}"
-        self.BtSelectCommand = f"btsel{CMD_SUFFIX}"
-        self.RssCommand = f"rss{CMD_SUFFIX}"
-
-
-BotCommands = _BotCommands()
+class BotCommands:
+    StartCommand = f"start{i}"
+    MirrorCommand = [f"mirror{i}", f"m{i}"]
+    QbMirrorCommand = [f"qbmirror{i}", f"qm{i}"]
+    JdMirrorCommand = [f"jdmirror{i}", f"jm{i}"]
+    YtdlCommand = [f"ytdl{i}", f"y{i}"]
+    NzbMirrorCommand = [f"nzbmirror{i}", f"nm{i}"]
+    LeechCommand = [f"leech{i}", f"l{i}"]
+    QbLeechCommand = [f"qbleech{i}", f"ql{i}"]
+    JdLeechCommand = [f"jdleech{i}", f"jl{i}"]
+    YtdlLeechCommand = [f"ytdlleech{i}", f"yl{i}"]
+    NzbLeechCommand = [f"nzbleech{i}", f"nl{i}"]
+    CloneCommand = f"clone{i}"
+    CountCommand = f"count{i}"
+    DeleteCommand = f"del{i}"
+    CancelTaskCommand = [f"cancel{i}", f"c{i}"]
+    CancelAllCommand = f"cancelall{i}"
+    ForceStartCommand = [f"forcestart{i}", f"fs{i}"]
+    ListCommand = f"list{i}"
+    SearchCommand = f"search{i}"
+    StatusCommand = f"status{i}"
+    UsersCommand = f"users{i}"
+    AuthorizeCommand = f"auth{i}"
+    UnAuthorizeCommand = f"unauth{i}"
+    AddSudoCommand = f"addsudo{i}"
+    RmSudoCommand = f"rmsudo{i}"
+    PingCommand = f"ping{i}"
+    RestartCommand = f"restart{i}"
+    StatsCommand = f"stats{i}"
+    HelpCommand = f"help{i}"
+    LogCommand = f"log{i}"
+    ShellCommand = f"shell{i}"
+    AExecCommand = f"aexec{i}"
+    ExecCommand = f"exec{i}"
+    ClearLocalsCommand = f"clearlocals{i}"
+    BotSetCommand = [f"bsetting{i}", f"bs{i}"]
+    UserSetCommand = [f"usetting{i}", f"us{i}"]
+    SelectCommand = f"sel{i}"
+    RssCommand = f"rss{i}"
+    NzbSearchCommand = f"nzbsearch{i}"

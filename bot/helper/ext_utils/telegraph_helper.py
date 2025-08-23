@@ -1,9 +1,9 @@
-from secrets import token_urlsafe
 from asyncio import sleep
+from secrets import token_urlsafe
 from telegraph.aio import Telegraph
 from telegraph.exceptions import RetryAfterError
 
-from bot import LOGGER, bot_loop
+from ... import LOGGER
 
 
 class TelegraphHelper:
@@ -13,12 +13,15 @@ class TelegraphHelper:
         self._author_url = author_url
 
     async def create_account(self):
-        await self._telegraph.create_account(
-            short_name=token_urlsafe(8),
-            author_name=self._author_name,
-            author_url=self._author_url,
-        )
         LOGGER.info("Creating Telegraph Account")
+        try:
+            await self._telegraph.create_account(
+                short_name=token_urlsafe(8),
+                author_name=self._author_name,
+                author_url=self._author_url,
+            )
+        except Exception as e:
+            LOGGER.error(f"Failed to create Telegraph Account: {e}")
 
     async def create_page(self, title, content):
         try:
@@ -80,4 +83,4 @@ telegraph = TelegraphHelper(
     "Mirror-Leech-Telegram-Bot", "https://github.com/anasty17/mirror-leech-telegram-bot"
 )
 
-bot_loop.run_until_complete(telegraph.create_account())
+print(__name__)
