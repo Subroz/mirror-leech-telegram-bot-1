@@ -1,7 +1,7 @@
 from asyncio import sleep
 
 from .. import task_dict, task_dict_lock, user_data, multi_tags
-from ..core.mltb_client import Config
+from ..core.config_manager import Config
 from ..helper.ext_utils.bot_utils import new_task
 from ..helper.ext_utils.status_utils import (
     get_task_by_gid,
@@ -94,7 +94,7 @@ def create_cancel_buttons(is_sudo, user_id=""):
         "Uploading", f"canall ms {MirrorStatus.STATUS_UPLOAD} {user_id}"
     )
     buttons.data_button("Seeding", f"canall ms {MirrorStatus.STATUS_SEED} {user_id}")
-    buttons.data_button("Spltting", f"canall ms {MirrorStatus.STATUS_SPLIT} {user_id}")
+    buttons.data_button("Splitting", f"canall ms {MirrorStatus.STATUS_SPLIT} {user_id}")
     buttons.data_button("Cloning", f"canall ms {MirrorStatus.STATUS_CLONE} {user_id}")
     buttons.data_button(
         "Extracting", f"canall ms {MirrorStatus.STATUS_EXTRACT} {user_id}"

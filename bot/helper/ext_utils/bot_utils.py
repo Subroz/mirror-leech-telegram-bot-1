@@ -15,6 +15,7 @@ from ..telegram_helper.button_build import ButtonMaker
 from .telegraph_helper import telegraph
 from .help_messages import (
     YT_HELP_DICT,
+    GDL_HELP_DICT,
     MIRROR_HELP_DICT,
     CLONE_HELP_DICT,
 )
@@ -51,6 +52,7 @@ def _build_command_usage(help_dict, command_key):
 def create_help_buttons():
     _build_command_usage(MIRROR_HELP_DICT, "mirror")
     _build_command_usage(YT_HELP_DICT, "yt")
+    _build_command_usage(GDL_HELP_DICT, "gdl")
     _build_command_usage(CLONE_HELP_DICT, "clone")
 
 
@@ -113,6 +115,8 @@ def arg_parser(items, arg_base):
         "-med",
         "-ut",
         "-bt",
+        "-ad",
+        "-tb",
     }
 
     while i < total:
@@ -138,6 +142,8 @@ def arg_parser(items, arg_base):
                     "-med",
                     "-ut",
                     "-bt",
+                    "-ad",
+                    "-tb",
                 ]
             ):
                 arg_base[part] = True
@@ -145,6 +151,9 @@ def arg_parser(items, arg_base):
                 sub_list = []
                 for j in range(i + 1, total):
                     if items[j] in arg_base:
+                        if part == "-c" and items[j] == "-c":
+                            sub_list.append(items[j])
+                            continue
                         if part in bool_arg_set and not sub_list:
                             arg_base[part] = True
                             break
