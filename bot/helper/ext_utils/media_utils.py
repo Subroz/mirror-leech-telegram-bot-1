@@ -4,7 +4,6 @@ from asyncio import (
     create_subprocess_exec,
     gather,
     wait_for,
-    sleep,
 )
 from asyncio.subprocess import PIPE
 from os import path as ospath
@@ -12,7 +11,7 @@ from re import search as re_search, escape
 from time import time
 from aioshutil import rmtree
 
-from ... import LOGGER, cpu_no, DOWNLOAD_DIR
+from ... import LOGGER, DOWNLOAD_DIR, threads, cores
 from .bot_utils import cmd_exec, sync_to_async
 from .files_utils import get_mime_type, is_archive, is_archive_split
 from .status_utils import time_to_seconds
@@ -30,6 +29,10 @@ async def create_thumb(msg, _id=""):
     await sync_to_async(Image.open(photo_dir).convert("RGB").save, output, "JPEG")
     await remove(photo_dir)
     return output
+
+
+def ffconcat_escape(path):
+    return path.replace("'", r"'\''")
 
 
 async def get_media_info(path):
@@ -126,6 +129,9 @@ async def take_ss(video_file, ss_nb) -> bool:
         for i in range(ss_nb):
             output = f"{dirpath}/SS.{name}_{i:02}.png"
             cmd = [
+                "taskset",
+                "-c",
+                f"{cores}",
                 "ffmpeg",
                 "-hide_banner",
                 "-loglevel",
@@ -139,7 +145,7 @@ async def take_ss(video_file, ss_nb) -> bool:
                 "-frames:v",
                 "1",
                 "-threads",
-                f"{max(1, cpu_no // 2)}",
+                f"{threads}",
                 output,
             ]
             cap_time += interval
@@ -148,13 +154,13 @@ async def take_ss(video_file, ss_nb) -> bool:
             resutls = await wait_for(gather(*cmds), timeout=60)
             if resutls[0][2] != 0:
                 LOGGER.error(
-                    f"Error while creating sreenshots from video. Path: {video_file}. stderr: {resutls[0][1]}"
+                    f"Error while creating screenshots from video. Path: {video_file}. stderr: {resutls[0][1]}"
                 )
                 await rmtree(dirpath, ignore_errors=True)
                 return False
         except:
             LOGGER.error(
-                f"Error while creating sreenshots from video. Path: {video_file}. Error: Timeout some issues with ffmpeg with specific arch!"
+                f"Error while creating screenshots from video. Path: {video_file}. Error: Timeout some issues with ffmpeg with specific arch!"
             )
             await rmtree(dirpath, ignore_errors=True)
             return False
@@ -169,6 +175,9 @@ async def get_audio_thumbnail(audio_file):
     await makedirs(output_dir, exist_ok=True)
     output = ospath.join(output_dir, f"{time()}.jpg")
     cmd = [
+        "taskset",
+        "-c",
+        f"{cores}",
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
@@ -179,7 +188,7 @@ async def get_audio_thumbnail(audio_file):
         "-vcodec",
         "copy",
         "-threads",
-        f"{max(1, cpu_no // 2)}",
+        f"{threads}",
         output,
     ]
     try:
@@ -207,6 +216,9 @@ async def get_video_thumbnail(video_file, duration):
         duration = 3
     duration = duration // 2
     cmd = [
+        "taskset",
+        "-c",
+        f"{cores}",
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
@@ -222,7 +234,7 @@ async def get_video_thumbnail(video_file, duration):
         "-frames:v",
         "1",
         "-threads",
-        f"{max(1, cpu_no // 2)}",
+        f"{threads}",
         output,
     ]
     try:
@@ -250,6 +262,9 @@ async def get_multiple_frames_thumbnail(video_file, layout, keep_screenshots):
     await makedirs(output_dir, exist_ok=True)
     output = ospath.join(output_dir, f"{time()}.jpg")
     cmd = [
+        "taskset",
+        "-c",
+        f"{cores}",
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
@@ -267,7 +282,7 @@ async def get_multiple_frames_thumbnail(video_file, layout, keep_screenshots):
         "-f",
         "mjpeg",
         "-threads",
-        f"{max(1, cpu_no // 2)}",
+        f"{threads}",
         output,
     ]
     try:
@@ -367,17 +382,23 @@ class FFMpeg:
                         except:
                             self._progress_raw = 0
                             self._eta_raw = 0
-            await sleep(0.05)
 
     async def ffmpeg_cmds(self, ffmpeg, f_path):
         self.clear()
-        self._total_time = (await get_media_info(f_path))[0]
-        base_name, ext = ospath.splitext(f_path)
+        if isinstance(f_path, list):
+            self._total_time = 0
+            for f in f_path:
+                self._total_time += (await get_media_info(f))[0]
+            base_name = ospath.commonprefix(f_path)
+            ext = f_path[0].rsplit(".", 1)[-1]
+        else:
+            self._total_time = (await get_media_info(f_path))[0]
+            base_name, ext = ospath.splitext(f_path)
         dir, base_name = base_name.rsplit("/", 1)
         indices = [
             index
             for index, item in enumerate(ffmpeg)
-            if item.startswith("mltb") or item == "mltb"
+            if (item.startswith("mltb") or item == "mltb") and item != "mltb.txt"
         ]
         outputs = []
         for index in indices:
@@ -385,10 +406,10 @@ class FFMpeg:
             if output_file != "mltb" and output_file.startswith("mltb"):
                 bo, oext = ospath.splitext(output_file)
                 if oext:
-                    if ext == oext:
-                        prefix = f"ffmpeg{index}." if bo == "mltb" else ""
-                    else:
+                    if isinstance(f_path, list) or ext != oext:
                         prefix = ""
+                    else:
+                        prefix = f"ffmpeg{index}." if bo == "mltb" else ""
                     ext = ""
                 else:
                     prefix = ""
@@ -432,6 +453,9 @@ class FFMpeg:
         output = f"{base_name}.{ext}"
         if retry:
             cmd = [
+                "taskset",
+                "-c",
+                f"{cores}",
                 "ffmpeg",
                 "-hide_banner",
                 "-loglevel",
@@ -447,17 +471,20 @@ class FFMpeg:
                 "-c:a",
                 "aac",
                 "-threads",
-                f"{max(1, cpu_no // 2)}",
+                f"{threads}",
                 output,
             ]
             if ext == "mp4":
-                cmd[14:14] = ["-c:s", "mov_text"]
+                cmd[17:17] = ["-c:s", "mov_text"]
             elif ext == "mkv":
-                cmd[14:14] = ["-c:s", "ass"]
+                cmd[17:17] = ["-c:s", "ass"]
             else:
-                cmd[14:14] = ["-c:s", "copy"]
+                cmd[17:17] = ["-c:s", "copy"]
         else:
             cmd = [
+                "taskset",
+                "-c",
+                f"{cores}",
                 "ffmpeg",
                 "-hide_banner",
                 "-loglevel",
@@ -471,7 +498,7 @@ class FFMpeg:
                 "-c",
                 "copy",
                 "-threads",
-                f"{max(1, cpu_no // 2)}",
+                f"{threads}",
                 output,
             ]
         if self._listener.is_cancelled:
@@ -509,6 +536,9 @@ class FFMpeg:
         base_name = ospath.splitext(audio_file)[0]
         output = f"{base_name}.{ext}"
         cmd = [
+            "taskset",
+            "-c",
+            f"{cores}",
             "ffmpeg",
             "-hide_banner",
             "-loglevel",
@@ -518,7 +548,7 @@ class FFMpeg:
             "-i",
             audio_file,
             "-threads",
-            f"{max(1, cpu_no // 2)}",
+            f"{threads}",
             output,
         ]
         if self._listener.is_cancelled:
@@ -579,6 +609,9 @@ class FFMpeg:
         filter_complex += f"concat=n={len(segments)}:v=1:a=1[vout][aout]"
 
         cmd = [
+            "taskset",
+            "-c",
+            f"{cores}",
             "ffmpeg",
             "-hide_banner",
             "-loglevel",
@@ -598,7 +631,7 @@ class FFMpeg:
             "-c:a",
             "aac",
             "-threads",
-            f"{max(1, cpu_no // 2)}",
+            f"{threads}",
             output_file,
         ]
 
@@ -640,6 +673,9 @@ class FFMpeg:
         while i <= parts or start_time < duration - 4:
             out_path = f_path.replace(file_, f"{base_name}.part{i:03}{extension}")
             cmd = [
+                "taskset",
+                "-c",
+                f"{cores}",
                 "ffmpeg",
                 "-hide_banner",
                 "-loglevel",
@@ -663,12 +699,12 @@ class FFMpeg:
                 "-c",
                 "copy",
                 "-threads",
-                f"{max(1, cpu_no // 2)}",
+                f"{threads}",
                 out_path,
             ]
             if not multi_streams:
-                del cmd[12]
-                del cmd[12]
+                del cmd[15]
+                del cmd[15]
             if self._listener.is_cancelled:
                 return False
             self._listener.subproc = await create_subprocess_exec(
@@ -718,7 +754,7 @@ class FFMpeg:
                 break
             elif duration == lpd:
                 LOGGER.warning(
-                    f"This file has been splitted with default stream and audio, so you will only see one part with less size from orginal one because it doesn't have all streams and audios. This happens mostly with MKV videos. Path: {f_path}"
+                    f"This file has been splitted with default stream and audio, so you will only see one part with less size from original one because it doesn't have all streams and audios. This happens mostly with MKV videos. Path: {f_path}"
                 )
                 break
             elif lpd <= 3:
